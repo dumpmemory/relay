@@ -1,0 +1,26 @@
+# Build outputs
+bin/
+dist/
+*.exe
+relay-webui
+webui-server
+webui_server
+
+# Runtime data
+data/
+
+# Frontend dependencies (dist is needed for embed)
+webui/frontend/node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Plans (internal)
+plans/

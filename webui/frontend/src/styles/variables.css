@@ -1,0 +1,226 @@
+/* ============================================
+   Relay WebUI - 全局样式变量系统
+   ============================================ */
+
+/* 颜色 - 主色 */
+:root {
+  /* 主色渐变 */
+  --color-primary-gradient: linear-gradient(135deg, #10b981, #059669);
+  --color-success-gradient: linear-gradient(135deg, #10b981, #059669);
+  --color-info-gradient: linear-gradient(135deg, #3b82f6, #2563eb);
+  --color-warning-gradient: linear-gradient(135deg, #f59e0b, #d97706);
+  --color-danger-gradient: linear-gradient(135deg, #ef4444, #dc2626);
+
+  /* 主色值 */
+  --color-primary: #10b981;
+  --color-success: #10b981;
+  --color-info: #3b82f6;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+
+  /* 文字颜色 */
+  --text-primary: rgba(255, 255, 255, 0.95);
+  --text-secondary: rgba(255, 255, 255, 0.8);
+  --text-tertiary: rgba(255, 255, 255, 0.6);
+  --text-quaternary: rgba(255, 255, 255, 0.5);
+  --text-muted: rgba(255, 255, 255, 0.4);
+  --text-disabled: rgba(255, 255, 255, 0.3);
+
+  /* 背景色 - 玻璃拟态 */
+  --bg-glass-subtle: rgba(255, 255, 255, 0.03);
+  --bg-glass-weak: rgba(255, 255, 255, 0.05);
+  --bg-glass-normal: rgba(255, 255, 255, 0.08);
+  --bg-glass-strong: rgba(255, 255, 255, 0.12);
+
+  /* 边框色 */
+  --border-glass-subtle: rgba(255, 255, 255, 0.05);
+  --border-glass-normal: rgba(255, 255, 255, 0.1);
+  --border-glass-strong: rgba(255, 255, 255, 0.15);
+  --border-primary: rgba(16, 185, 129, 0.3);
+  --border-primary-strong: rgba(16, 185, 129, 0.5);
+
+  /* 背景渐变 */
+  --bg-gradient-dark: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+
+  /* 模糊效果 */
+  --blur-glass: blur(10px);
+  --blur-strong: blur(20px);
+
+  /* 圆角 */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
+
+  /* 字体大小 */
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+  --font-size-3xl: 28px;
+  --font-size-4xl: 32px;
+
+  /* 字体粗细 */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* 间距 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  --spacing-2xl: 24px;
+  --spacing-3xl: 32px;
+  --spacing-4xl: 40px;
+
+  /* 阴影 */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --shadow-primary: 0 4px 12px rgba(16, 185, 129, 0.4);
+  --shadow-info: 0 4px 12px rgba(59, 130, 246, 0.4);
+  --shadow-warning: 0 4px 12px rgba(245, 158, 11, 0.4);
+  --shadow-danger: 0 4px 12px rgba(239, 68, 68, 0.4);
+
+  /* 过渡动画 */
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.3s ease;
+  --transition-slow: 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Z-index */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+}
+
+/* ============================================
+   通用样式类
+   ============================================ */
+
+/* 玻璃拟态卡片 */
+.glass-card {
+  background: var(--bg-glass-weak);
+  backdrop-filter: var(--blur-glass);
+  -webkit-backdrop-filter: var(--blur-glass);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-glass-normal);
+}
+
+/* 玻璃拟态面板（更明显） */
+.glass-panel {
+  background: var(--bg-glass-normal);
+  backdrop-filter: var(--blur-glass);
+  -webkit-backdrop-filter: var(--blur-glass);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-glass-normal);
+}
+
+/* 文字渐变 */
+.text-gradient-primary {
+  background: linear-gradient(135deg, #fff, #d1fae5);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 状态指示器 */
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-indicator.active {
+  background: var(--color-success);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.status-indicator.inactive {
+  background: var(--text-muted);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+  }
+  50% {
+    opacity: 0.7;
+    box-shadow: 0 0 4px rgba(16, 185, 129, 0.3);
+  }
+}
+
+/* ============================================
+   Element Plus 样式覆盖
+   ============================================ */
+
+/* 深色输入框基础样式 */
+.dark-input .el-input__wrapper {
+  background: var(--bg-glass-weak);
+  border: 1px solid var(--border-glass-normal);
+  box-shadow: none;
+  transition: all var(--transition-base);
+}
+
+.dark-input .el-input__wrapper:hover {
+  border-color: var(--border-glass-strong);
+}
+
+.dark-input .el-input__wrapper.is-focus {
+  background: var(--bg-glass-normal);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.dark-input .el-input__inner {
+  color: var(--text-primary);
+}
+
+.dark-input .el-input__inner::placeholder {
+  color: var(--text-muted);
+}
+
+.dark-input .el-input__prefix,
+.dark-input .el-input__suffix {
+  color: var(--text-quaternary);
+}
+
+/* 绿色开关 */
+.green-switch .el-switch__input:checked + .el-switch__core {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+/* 滚动条样式 */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: var(--bg-glass-subtle);
+  border-radius: var(--radius-xs);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border-glass-strong);
+  border-radius: var(--radius-xs);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}

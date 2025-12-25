@@ -1,0 +1,190 @@
+// ============================================
+// 全局样式 - 深色主题
+// ============================================
+
+// 重置与基础样式
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: var(--text-primary);
+  background: transparent;
+}
+
+#app {
+  height: 100%;
+}
+
+// ============================================
+// Element Plus 样式覆盖 - 深色主题
+// ============================================
+
+// 按钮
+.el-button {
+  border-radius: var(--radius-sm) !important;
+  transition: all var(--transition-base) !important;
+
+  &.el-button--primary {
+    background: var(--color-primary-gradient);
+    border: none;
+  }
+
+  &.el-button--success {
+    background: var(--color-success-gradient);
+    border: none;
+  }
+
+  &.el-button--warning {
+    background: var(--color-warning-gradient);
+    border: none;
+  }
+
+  &.el-button--danger {
+    background: var(--color-danger-gradient);
+    border: none;
+  }
+
+  &:hover {
+    transform: translateY(-1px);
+  }
+}
+
+// 对话框
+.el-dialog {
+  border-radius: var(--radius-xl) !important;
+  background: rgba(30, 41, 59, 0.95) !important;
+  backdrop-filter: var(--blur-strong);
+  border: 1px solid var(--border-glass-normal);
+
+  .el-dialog__header {
+    border-bottom: 1px solid var(--border-glass-normal);
+  }
+
+  .el-dialog__title {
+    color: var(--text-primary);
+  }
+
+  .el-dialog__body {
+    color: var(--text-secondary);
+  }
+
+  .el-dialog__headerbtn .el-dialog__close {
+    color: var(--text-quaternary);
+  }
+}
+
+// 输入框
+.el-input__wrapper {
+  border-radius: var(--radius-sm) !important;
+}
+
+.el-select__wrapper {
+  border-radius: var(--radius-sm) !important;
+}
+
+// 表单标签
+.el-form-item__label {
+  color: var(--text-secondary);
+}
+
+// 消息提示
+.el-message {
+  background: rgba(30, 41, 59, 0.95) !important;
+  backdrop-filter: var(--blur-strong);
+  border: 1px solid var(--border-glass-normal) !important;
+  border-radius: var(--radius-md) !important;
+  color: var(--text-primary) !important;
+}
+
+// 消息框
+.el-message-box {
+  background: rgba(30, 41, 59, 0.95) !important;
+  backdrop-filter: var(--blur-strong);
+  border: 1px solid var(--border-glass-normal) !important;
+  border-radius: var(--radius-xl) !important;
+
+  .el-message-box__title {
+    color: var(--text-primary);
+  }
+
+  .el-message-box__content {
+    color: var(--text-secondary);
+  }
+}
+
+// 下拉菜单
+.el-dropdown-menu {
+  background: rgba(30, 41, 59, 0.98) !important;
+  backdrop-filter: var(--blur-strong);
+  border: 1px solid var(--border-glass-normal) !important;
+  border-radius: var(--radius-md) !important;
+
+  .el-dropdown-menu__item {
+    color: var(--text-secondary);
+
+    &:hover {
+      background: var(--bg-glass-weak);
+      color: var(--text-primary);
+    }
+  }
+}
+
+// 标签
+.el-tag {
+  border-radius: var(--radius-xs) !important;
+}
+
+// ============================================
+// 工具类
+// ============================================
+
+// 间距
+.mb-8 { margin-bottom: var(--spacing-sm); }
+.mb-12 { margin-bottom: var(--spacing-md); }
+.mb-16 { margin-bottom: var(--spacing-lg); }
+.mb-20 { margin-bottom: var(--spacing-xl); }
+
+.mt-8 { margin-top: var(--spacing-sm); }
+.mt-12 { margin-top: var(--spacing-md); }
+.mt-16 { margin-top: var(--spacing-lg); }
+.mt-20 { margin-top: var(--spacing-xl); }
+
+// 文字颜色
+.text-success { color: var(--color-success) !important; }
+.text-danger { color: var(--color-danger) !important; }
+.text-warning { color: var(--color-warning) !important; }
+.text-info { color: var(--color-info) !important; }
+.text-muted { color: var(--text-muted); }
+.text-secondary { color: var(--text-tertiary); }
+
+// 状态圆点（兼容旧代码）
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+
+  &.running {
+    background: var(--color-success);
+  }
+  &.stopped {
+    background: var(--text-muted);
+  }
+  &.error {
+    background: var(--color-danger);
+  }
+}
+
+// 紧凑表格（兼容旧代码）
+.compact-table {
+  .el-table__cell {
+    padding: 8px 12px !important;
+  }
+}
