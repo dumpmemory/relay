@@ -38,27 +38,30 @@ const router = createRouter({
   ]
 })
 
-// 缓存 setup 状态
-let setupChecked = false
+// 应用状态
 let needSetup = false
+let initialized = false
 
-// 路由守卫
-router.beforeEach(async (to) => {
+// 初始化函数（只调用一次）
+export async function initApp() {
+  if (initialized) return
+  const health = await checkHealth()
+  needSetup = health?.need_setup ?? false
+  initialized = true
+}
+
+// 路由守卫（同步检查）
+router.beforeEach((to) => {
   const token = localStorage.getItem('token')
 
-  // 检查健康状态（仅一次）
-  if (!setupChecked) {
-    const health = await checkHealth()
-    if (health) {
-      needSetup = health.need_setup
-      setupChecked = true
-    }
+  // 未初始化时不拦截（等 initApp 完成后再导航）
+  if (!initialized) {
+    return
   }
 
   // 访问 setup 页面
   if (to.path === '/setup') {
-    // 已完成初始化，重定向到首页或登录页
-    if (setupChecked && !needSetup) {
+    if (!needSetup) {
       return token ? '/' : '/login'
     }
     return
@@ -66,11 +69,9 @@ router.beforeEach(async (to) => {
 
   // 访问登录页
   if (to.path === '/login') {
-    // 需要初始化则跳转 setup
     if (needSetup) {
       return '/setup'
     }
-    // 已登录则跳转首页
     if (token) {
       return '/'
     }
@@ -78,12 +79,9 @@ router.beforeEach(async (to) => {
   }
 
   // 访问其他页面
-  // 需要初始化
   if (needSetup) {
     return '/setup'
   }
-
-  // 未登录则跳转登录页
   if (!token) {
     return '/login'
   }

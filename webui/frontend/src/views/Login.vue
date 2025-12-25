@@ -88,6 +88,7 @@ onMounted(() => {
             type="primary"
             size="large"
             :loading="loading"
+            :disabled="loading"
             @click="login"
             class="login-btn"
           >
