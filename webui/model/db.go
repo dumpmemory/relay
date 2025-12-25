@@ -123,6 +123,23 @@ func createTables() error {
 		return err
 	}
 
+	// sessions 表
+	_, err = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS sessions (
+			token TEXT PRIMARY KEY,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			expires_at DATETIME NOT NULL
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	_, err = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 

@@ -36,11 +36,6 @@ var (
 	lockDuration     = 15 * time.Minute
 )
 
-// sessionData 会话数据
-type sessionData struct {
-	createdAt time.Time
-}
-
 const sessionTTL = 24 * time.Hour // 会话有效期 24 小时
 
 // Handlers API处理器
@@ -48,7 +43,6 @@ type Handlers struct {
 	relayMgr *service.RelayManager
 	geoIP    *service.GeoIPService
 	wsHub    *WSHub
-	sessions sync.Map // token -> *sessionData
 }
 
 // NewHandlers 创建处理器
@@ -68,15 +62,9 @@ func (h *Handlers) cleanupSessions() {
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 	for range ticker.C {
-		now := time.Now()
-		h.sessions.Range(func(key, value interface{}) bool {
-			if sd, ok := value.(*sessionData); ok {
-				if now.Sub(sd.createdAt) > sessionTTL {
-					h.sessions.Delete(key)
-				}
-			}
-			return true
-		})
+		if err := model.CleanExpiredSessions(); err != nil {
+			log.Printf("清理过期会话失败: %v", err)
+		}
 	}
 }
 
@@ -104,10 +92,7 @@ func (h *Handlers) Handle(action string, data map[string]interface{}, c *gin.Con
 			}
 		} else {
 			// 提供了 token，验证是否有效且未过期
-			if v, ok := h.sessions.Load(token); !ok {
-				return Error(401, "登录已过期")
-			} else if sd, ok := v.(*sessionData); !ok || time.Since(sd.createdAt) > sessionTTL {
-				h.sessions.Delete(token)
+			if _, err := model.GetSession(token); err != nil {
 				return Error(401, "登录已过期")
 			}
 		}
@@ -221,13 +206,15 @@ func (h *Handlers) handleSystem(method string, data map[string]interface{}, c *g
 		if err != nil {
 			return Error(500, "生成令牌失败")
 		}
-		h.sessions.Store(token, &sessionData{createdAt: time.Now()})
+		if err := model.CreateSession(token, sessionTTL); err != nil {
+			return Error(500, "创建会话失败")
+		}
 
 		return Success(map[string]interface{}{"token": token})
 
 	case "logout":
 		token := c.GetHeader("Authorization")
-		h.sessions.Delete(token)
+		model.DeleteSession(token)
 		return Success(nil)
 
 	case "version":
@@ -303,10 +290,7 @@ func (h *Handlers) handleSystem(method string, data map[string]interface{}, c *g
 		}
 
 		// 清除所有会话，强制重新登录
-		h.sessions.Range(func(key, value interface{}) bool {
-			h.sessions.Delete(key)
-			return true
-		})
+		model.DeleteAllSessions()
 
 		return Success(nil)
 
@@ -335,13 +319,7 @@ func (h *Handlers) HandleGeoIPUpload(c *gin.Context) {
 		c.JSON(200, Error(401, "未登录"))
 		return
 	}
-	v, ok := h.sessions.Load(token)
-	if !ok {
-		c.JSON(200, Error(401, "登录已过期"))
-		return
-	}
-	if sd, ok := v.(*sessionData); !ok || time.Since(sd.createdAt) > sessionTTL {
-		h.sessions.Delete(token)
+	if _, err := model.GetSession(token); err != nil {
 		c.JSON(200, Error(401, "登录已过期"))
 		return
 	}
@@ -720,14 +698,7 @@ func (h *Handlers) HandleWebSocket(c *gin.Context) {
 		return
 	}
 
-	v, ok := h.sessions.Load(token)
-	if !ok {
-		c.JSON(401, Error(401, "无效的认证令牌"))
-		return
-	}
-
-	if sd, ok := v.(*sessionData); !ok || time.Since(sd.createdAt) > sessionTTL {
-		h.sessions.Delete(token)
+	if _, err := model.GetSession(token); err != nil {
 		c.JSON(401, Error(401, "认证已过期"))
 		return
 	}
