@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -674,10 +675,10 @@ func (h *Handlers) handleStats(method string, data map[string]interface{}) APIRe
 // ==================== WebSocket ====================
 
 // createUpgrader 创建 WebSocket upgrader，验证 Origin
-func createUpgrader() websocket.Upgrader {
+func createUpgrader(r *http.Request) websocket.Upgrader {
 	return websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool {
-			origin := r.Header.Get("Origin")
+		CheckOrigin: func(req *http.Request) bool {
+			origin := req.Header.Get("Origin")
 			if origin == "" {
 				return true // 允许非浏览器客户端
 			}
@@ -686,6 +687,17 @@ func createUpgrader() websocket.Upgrader {
 			allowOrigin := getCachedCORSOrigin()
 			if allowOrigin == "*" {
 				return true
+			}
+
+			// 空字符串表示同源策略，检查 Origin 是否与 Host 匹配
+			if allowOrigin == "" {
+				// 解析 Origin URL
+				originURL, err := url.Parse(origin)
+				if err != nil {
+					return false
+				}
+				// 比较 host（忽略协议）
+				return originURL.Host == req.Host
 			}
 
 			// 检查是否在允许列表中
@@ -721,7 +733,7 @@ func (h *Handlers) HandleWebSocket(c *gin.Context) {
 	}
 
 	// 创建 upgrader 并升级连接
-	upgrader := createUpgrader()
+	upgrader := createUpgrader(c.Request)
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("WebSocket 升级失败: %v", err)
