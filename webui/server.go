@@ -126,6 +126,15 @@ func corsMiddleware() gin.HandlerFunc {
 }
 
 func (s *Server) setupRoutes() {
+	// 健康检查（无需鉴权）
+	s.engine.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status":       "ok",
+			"version":      Version,
+			"need_setup":   !model.IsSetupCompleted(),
+		})
+	})
+
 	// 统一 API 入口
 	s.engine.POST("/api", s.handleAPI)
 

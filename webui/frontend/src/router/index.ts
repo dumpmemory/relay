@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { setupApi } from '../api'
+import { checkHealth } from '../api'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -46,19 +46,17 @@ let needSetup = false
 router.beforeEach(async (to) => {
   const token = localStorage.getItem('token')
 
-  // 访问 setup 页面时检查状态
-  if (to.path === '/setup') {
-    if (!setupChecked) {
-      try {
-        const res = await setupApi.status()
-        if (res.code === 0) {
-          needSetup = res.data.need_setup
-          setupChecked = true
-        }
-      } catch {
-        // 网络错误，允许访问
-      }
+  // 检查健康状态（仅一次）
+  if (!setupChecked) {
+    const health = await checkHealth()
+    if (health) {
+      needSetup = health.need_setup
+      setupChecked = true
     }
+  }
+
+  // 访问 setup 页面
+  if (to.path === '/setup') {
     // 已完成初始化，重定向到首页或登录页
     if (setupChecked && !needSetup) {
       return token ? '/' : '/login'
@@ -68,6 +66,10 @@ router.beforeEach(async (to) => {
 
   // 访问登录页
   if (to.path === '/login') {
+    // 需要初始化则跳转 setup
+    if (needSetup) {
+      return '/setup'
+    }
     // 已登录则跳转首页
     if (token) {
       return '/'
@@ -75,19 +77,7 @@ router.beforeEach(async (to) => {
     return
   }
 
-  // 访问其他页面，先检查 setup 状态
-  if (!setupChecked) {
-    try {
-      const res = await setupApi.status()
-      if (res.code === 0) {
-        needSetup = res.data.need_setup
-        setupChecked = true
-      }
-    } catch {
-      // 网络错误，继续检查 token
-    }
-  }
-
+  // 访问其他页面
   // 需要初始化
   if (needSetup) {
     return '/setup'

@@ -23,6 +23,25 @@ export function removeToken() {
 // API 基础 URL
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
+// 健康检查接口（无需鉴权）
+export interface HealthResponse {
+  status: string
+  version: string
+  need_setup: boolean
+}
+
+export async function checkHealth(): Promise<HealthResponse | null> {
+  try {
+    const response = await fetch(`${BASE_URL}/health`)
+    if (response.ok) {
+      return response.json()
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 // 统一 API 调用
 export async function api<T = unknown>(action: string, data: Record<string, unknown> = {}): Promise<ApiResponse<T>> {
   try {
