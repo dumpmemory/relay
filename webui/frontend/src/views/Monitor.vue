@@ -22,7 +22,7 @@ const currentConnections = computed(() => {
   })
 })
 
-const defaultTraffic: TrafficData = { relay_id: '', bytes_in: 0, bytes_out: 0, connections: 0 }
+const defaultTraffic: TrafficData = { relay_id: '', bytes_in: 0, bytes_out: 0, bytes_in_speed: 0, bytes_out_speed: 0, connections: 0 }
 
 const currentTraffic = computed(() => {
   if (!selectedRelay.value) return defaultTraffic
@@ -39,6 +39,14 @@ const formatBytes = (bytes: number | undefined): string => {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+const formatSpeed = (bytesPerSec: number | undefined): string => {
+  if (!bytesPerSec || bytesPerSec <= 0) return '0 B/s'
+  const k = 1024
+  const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s']
+  const i = Math.floor(Math.log(bytesPerSec) / Math.log(k))
+  return parseFloat((bytesPerSec / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
 const formatTime = (timestamp: string): string => {
@@ -166,12 +174,30 @@ onUnmounted(() => {
                 <div class="stat-value">{{ currentTraffic.connections }}</div>
               </div>
             </div>
+            <div class="stat-card stat-speed-in">
+              <div class="stat-icon">
+                <el-icon><Download /></el-icon>
+              </div>
+              <div class="stat-info">
+                <div class="stat-label">入站速度</div>
+                <div class="stat-value">{{ formatSpeed(currentTraffic.bytes_in_speed) }}</div>
+              </div>
+            </div>
+            <div class="stat-card stat-speed-out">
+              <div class="stat-icon">
+                <el-icon><Upload /></el-icon>
+              </div>
+              <div class="stat-info">
+                <div class="stat-label">出站速度</div>
+                <div class="stat-value">{{ formatSpeed(currentTraffic.bytes_out_speed) }}</div>
+              </div>
+            </div>
             <div class="stat-card stat-in">
               <div class="stat-icon">
                 <el-icon><Download /></el-icon>
               </div>
               <div class="stat-info">
-                <div class="stat-label">入站流量</div>
+                <div class="stat-label">入站总量</div>
                 <div class="stat-value">{{ formatBytes(currentTraffic.bytes_in) }}</div>
               </div>
             </div>
@@ -180,7 +206,7 @@ onUnmounted(() => {
                 <el-icon><Upload /></el-icon>
               </div>
               <div class="stat-info">
-                <div class="stat-label">出站流量</div>
+                <div class="stat-label">出站总量</div>
                 <div class="stat-value">{{ formatBytes(currentTraffic.bytes_out) }}</div>
               </div>
             </div>
@@ -201,7 +227,7 @@ onUnmounted(() => {
                 :row-class-name="tableRowClassName"
                 :header-cell-class-name="'table-header-cell'"
                 class="monitor-table"
-                max-height="400"
+                height="100%"
               >
                 <el-table-column prop="active" label="状态" width="70">
                   <template #default="{ row }">
@@ -233,14 +259,29 @@ onUnmounted(() => {
                     {{ formatDuration(row.duration) }}
                   </template>
                 </el-table-column>
-                <el-table-column prop="bytes_in" label="入站" width="100" show-overflow-tooltip>
+                <el-table-column prop="bytes_in" label="入站" width="90" show-overflow-tooltip>
                   <template #default="{ row }">
                     {{ formatBytes(row.bytes_in) }}
                   </template>
                 </el-table-column>
-                <el-table-column prop="bytes_out" label="出站" width="100" show-overflow-tooltip>
+                <el-table-column prop="bytes_out" label="出站" width="90" show-overflow-tooltip>
                   <template #default="{ row }">
                     {{ formatBytes(row.bytes_out) }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="速度" width="140" show-overflow-tooltip>
+                  <template #default="{ row }">
+                    <template v-if="row.active">
+                      <span class="speed-badge speed-in">
+                        <el-icon><Download /></el-icon>
+                        {{ formatSpeed(row.bytes_in_speed) }}
+                      </span>
+                      <span class="speed-badge speed-out">
+                        <el-icon><Upload /></el-icon>
+                        {{ formatSpeed(row.bytes_out_speed) }}
+                      </span>
+                    </template>
+                    <span v-else class="speed-inactive">-</span>
                   </template>
                 </el-table-column>
               </el-table>
@@ -478,7 +519,7 @@ onUnmounted(() => {
 /* 统计卡片网格 */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 16px;
 }
 
@@ -514,8 +555,18 @@ onUnmounted(() => {
   color: #fff;
 }
 
-.stat-in .stat-icon {
+.stat-speed-in .stat-icon {
   background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+}
+
+.stat-speed-out .stat-icon {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  color: #fff;
+}
+
+.stat-in .stat-icon {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
   color: #fff;
 }
 
@@ -585,12 +636,19 @@ onUnmounted(() => {
 .table-container {
   flex: 1;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 表格样式 */
 .monitor-table {
   background: transparent !important;
   font-size: 13px;
+  flex: 1;
+}
+
+.monitor-table :deep(.el-table__inner-wrapper) {
+  height: 100% !important;
 }
 
 /* 表头样式 - 多层覆盖 */
@@ -703,6 +761,35 @@ onUnmounted(() => {
 
 .location-text {
   color: rgba(255, 255, 255, 0.5);
+}
+
+/* 速度徽章 */
+.speed-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  margin-right: 4px;
+}
+
+.speed-badge .el-icon {
+  font-size: 10px;
+}
+
+.speed-badge.speed-in {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.speed-badge.speed-out {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+
+.speed-inactive {
+  color: rgba(255, 255, 255, 0.3);
 }
 
 /* 空表格状态 */

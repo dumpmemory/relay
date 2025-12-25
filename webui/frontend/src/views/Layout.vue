@@ -2,12 +2,16 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { removeToken, systemApi, type VersionInfo } from '../api'
+import { useWebSocket } from '../composables/useWebSocket'
 
 const router = useRouter()
 const route = useRoute()
 const collapsed = ref(false)
 const isMobile = ref(false)
 const version = ref<VersionInfo | null>(null)
+
+// WebSocket 连接状态
+const { isConnected, dataActive } = useWebSocket()
 
 const menuItems = [
   { path: '/', icon: 'Grid', label: '转发规则' },
@@ -52,8 +56,28 @@ onUnmounted(() => {
   <el-container class="layout-container">
     <el-aside :width="collapsed ? '64px' : '200px'" class="layout-aside">
       <div class="logo">
-        <span v-if="!collapsed">Relay</span>
-        <span v-else>R</span>
+        <span class="logo-text" v-if="!collapsed">
+          Relay
+          <span
+            class="status-dot"
+            :class="{
+              'connected': isConnected,
+              'disconnected': !isConnected,
+              'data-active': dataActive
+            }"
+          ></span>
+        </span>
+        <span class="logo-text" v-else>
+          R
+          <span
+            class="status-dot"
+            :class="{
+              'connected': isConnected,
+              'disconnected': !isConnected,
+              'data-active': dataActive
+            }"
+          ></span>
+        </span>
       </div>
       <el-menu
         :default-active="activeMenu"
@@ -135,6 +159,50 @@ onUnmounted(() => {
   font-weight: 700;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.1));
+}
+
+.logo-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.status-dot.disconnected {
+  background: #6b7280;
+  box-shadow: 0 0 4px rgba(107, 114, 128, 0.5);
+}
+
+.status-dot.connected {
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+
+.status-dot.data-active {
+  animation: pulse 0.2s ease-in-out;
+  background: #fbbf24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.8);
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .aside-menu {

@@ -53,6 +53,12 @@ type RelayInstance struct {
 	bytesIn     int64
 	bytesOut    int64
 
+	// 速度计算（EMA 平滑）
+	lastBytesIn    int64
+	lastBytesOut   int64
+	smoothSpeedIn  float64 // EMA 平滑后的入站速度
+	smoothSpeedOut float64 // EMA 平滑后的出站速度
+
 	// 连接历史记录
 	historyMu sync.Mutex
 	history   []*Connection // 已断开的连接历史
@@ -205,6 +211,30 @@ func (m *RelayManager) GetConnections(id string) []Connection {
 
 // ==================== RelayInstance ====================
 
+// countingWriter 包装 io.Writer，实时统计写入字节数
+type countingWriter struct {
+	w       io.Writer
+	counter *int64      // 连接级别计数器
+	total   *int64      // 全局计数器
+	connRef *Connection // 连接引用，用于实时更新
+	isIn    bool        // true=入站, false=出站
+}
+
+func (cw *countingWriter) Write(p []byte) (int, error) {
+	n, err := cw.w.Write(p)
+	if n > 0 {
+		atomic.AddInt64(cw.counter, int64(n))
+		atomic.AddInt64(cw.total, int64(n))
+		// 实时更新连接的字节数
+		if cw.isIn {
+			atomic.StoreInt64(&cw.connRef.BytesIn, atomic.LoadInt64(cw.counter))
+		} else {
+			atomic.StoreInt64(&cw.connRef.BytesOut, atomic.LoadInt64(cw.counter))
+		}
+	}
+	return n, err
+}
+
 func (r *RelayInstance) startTCP() error {
 	ln, err := net.Listen("tcp", r.rule.Src)
 	if err != nil {
@@ -271,15 +301,20 @@ func (r *RelayInstance) handleTCP(client net.Conn) {
 	// 记录日志
 	model.SaveAccessLog(r.rule.ID, clientIP, "connect", 0, 0, 0)
 
-	// 双向复制
+	// 双向复制（使用 countingWriter 实时统计）
 	var bytesIn, bytesOut int64
 	done := make(chan struct{}, 2)
 
+	// 入站：client -> remote
 	go func() {
-		n, _ := io.Copy(remote, client)
-		atomic.AddInt64(&bytesIn, n)
-		atomic.AddInt64(&r.bytesIn, n)
-		atomic.StoreInt64(&connInfo.BytesIn, bytesIn)
+		cw := &countingWriter{
+			w:       remote,
+			counter: &bytesIn,
+			total:   &r.bytesIn,
+			connRef: connInfo,
+			isIn:    true,
+		}
+		io.Copy(cw, client)
 		// 关闭写入方向，通知对方结束
 		if tc, ok := remote.(*net.TCPConn); ok {
 			tc.CloseWrite()
@@ -287,11 +322,16 @@ func (r *RelayInstance) handleTCP(client net.Conn) {
 		done <- struct{}{}
 	}()
 
+	// 出站：remote -> client
 	go func() {
-		n, _ := io.Copy(client, remote)
-		atomic.AddInt64(&bytesOut, n)
-		atomic.AddInt64(&r.bytesOut, n)
-		atomic.StoreInt64(&connInfo.BytesOut, bytesOut)
+		cw := &countingWriter{
+			w:       client,
+			counter: &bytesOut,
+			total:   &r.bytesOut,
+			connRef: connInfo,
+			isIn:    false,
+		}
+		io.Copy(cw, remote)
 		// 关闭写入方向，通知对方结束
 		if tc, ok := client.(*net.TCPConn); ok {
 			tc.CloseWrite()
@@ -308,8 +348,9 @@ func (r *RelayInstance) handleTCP(client net.Conn) {
 	connInfo.EndedAt = &now
 	connInfo.Duration = int64(now.Sub(connInfo.StartedAt).Seconds())
 	connInfo.Active = false
-	connInfo.BytesIn = bytesIn
-	connInfo.BytesOut = bytesOut
+	// 最终字节数已通过 countingWriter 实时更新，这里确保最终值正确
+	connInfo.BytesIn = atomic.LoadInt64(&bytesIn)
+	connInfo.BytesOut = atomic.LoadInt64(&bytesOut)
 
 	r.connections.Delete(connID)
 	atomic.AddInt64(&r.connCount, -1)
@@ -501,12 +542,54 @@ func (r *RelayInstance) pushStatus() {
 				"connections": conns,
 			})
 
-			// 推送流量统计
+			// 计算速度（使用 EMA 指数移动平均平滑）
+			// EMA 公式: smoothed = alpha * current + (1 - alpha) * previous
+			// alpha = 0.3 提供较好的平滑效果，同时保持响应速度
+			const alpha = 0.3
+
+			currentBytesIn := atomic.LoadInt64(&r.bytesIn)
+			currentBytesOut := atomic.LoadInt64(&r.bytesOut)
+			lastIn := atomic.LoadInt64(&r.lastBytesIn)
+			lastOut := atomic.LoadInt64(&r.lastBytesOut)
+
+			// 计算瞬时速度
+			instantSpeedIn := float64(currentBytesIn - lastIn)
+			instantSpeedOut := float64(currentBytesOut - lastOut)
+
+			// 应用 EMA 平滑
+			if r.smoothSpeedIn == 0 && instantSpeedIn > 0 {
+				// 首次有数据时直接使用瞬时值
+				r.smoothSpeedIn = instantSpeedIn
+			} else {
+				r.smoothSpeedIn = alpha*instantSpeedIn + (1-alpha)*r.smoothSpeedIn
+			}
+
+			if r.smoothSpeedOut == 0 && instantSpeedOut > 0 {
+				r.smoothSpeedOut = instantSpeedOut
+			} else {
+				r.smoothSpeedOut = alpha*instantSpeedOut + (1-alpha)*r.smoothSpeedOut
+			}
+
+			// 速度过小时归零（避免显示 0.1 B/s 这样的值）
+			if r.smoothSpeedIn < 1 {
+				r.smoothSpeedIn = 0
+			}
+			if r.smoothSpeedOut < 1 {
+				r.smoothSpeedOut = 0
+			}
+
+			// 更新上一秒的值
+			atomic.StoreInt64(&r.lastBytesIn, currentBytesIn)
+			atomic.StoreInt64(&r.lastBytesOut, currentBytesOut)
+
+			// 推送流量统计（包含平滑后的速度）
 			r.broadcaster.BroadcastToRelay(r.rule.ID, "relay.traffic", map[string]interface{}{
-				"relay_id":    r.rule.ID,
-				"bytes_in":    atomic.LoadInt64(&r.bytesIn),
-				"bytes_out":   atomic.LoadInt64(&r.bytesOut),
-				"connections": atomic.LoadInt64(&r.connCount),
+				"relay_id":        r.rule.ID,
+				"bytes_in":        currentBytesIn,
+				"bytes_out":       currentBytesOut,
+				"bytes_in_speed":  int64(r.smoothSpeedIn),
+				"bytes_out_speed": int64(r.smoothSpeedOut),
+				"connections":     atomic.LoadInt64(&r.connCount),
 			})
 		}
 	}

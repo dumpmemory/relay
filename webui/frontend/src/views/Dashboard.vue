@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { relayApi, type RelayRule } from '../api'
-import { useWebSocket, type TrafficData } from '../composables/useWebSocket'
+import { useWebSocket } from '../composables/useWebSocket'
 
 const router = useRouter()
 const loading = ref(false)
@@ -13,58 +13,27 @@ const importInput = ref<HTMLInputElement | null>(null)
 // WebSocket 实时数据
 const { traffic, subscribe, unsubscribe } = useWebSocket()
 
-// 网速计算
-interface SpeedData {
-  bytesInSpeed: number
-  bytesOutSpeed: number
-  connections: number
-}
-const speedData = ref<Map<string, SpeedData>>(new Map())
-const lastTraffic = ref<Map<string, TrafficData>>(new Map())
-let speedTimer: number | null = null
-
-// 计算网速
-const calculateSpeed = () => {
-  rules.value.forEach(rule => {
-    if (!rule.running) return
-    const current = traffic.value.get(rule.id)
-    const last = lastTraffic.value.get(rule.id)
-
-    if (current && last) {
-      const bytesInSpeed = Math.max(0, current.bytes_in - last.bytes_in)
-      const bytesOutSpeed = Math.max(0, current.bytes_out - last.bytes_out)
-      speedData.value.set(rule.id, {
-        bytesInSpeed,
-        bytesOutSpeed,
-        connections: current.connections
-      })
-    } else if (current) {
-      speedData.value.set(rule.id, {
-        bytesInSpeed: 0,
-        bytesOutSpeed: 0,
-        connections: current.connections
-      })
-    }
-
-    if (current) {
-      lastTraffic.value.set(rule.id, { ...current })
-    }
-  })
-}
-
 // 格式化网速
 const formatSpeed = (bytesPerSec: number): string => {
-  if (bytesPerSec === 0) return '0 B/s'
+  if (!bytesPerSec || bytesPerSec <= 0) return '0 B/s'
   const k = 1024
   const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s']
   const i = Math.floor(Math.log(bytesPerSec) / Math.log(k))
   return parseFloat((bytesPerSec / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
-// 获取规则的速度数据
-const getSpeed = (ruleId: string): SpeedData => {
-  return speedData.value.get(ruleId) || { bytesInSpeed: 0, bytesOutSpeed: 0, connections: 0 }
-}
+// 获取规则的流量数据（计算属性，确保响应式更新）
+const trafficByRule = computed(() => {
+  const result: Record<string, { bytesInSpeed: number; bytesOutSpeed: number; connections: number }> = {}
+  for (const [id, data] of traffic.value.entries()) {
+    result[id] = {
+      bytesInSpeed: data.bytes_in_speed || 0,
+      bytesOutSpeed: data.bytes_out_speed || 0,
+      connections: data.connections || 0
+    }
+  }
+  return result
+})
 
 // 跳转到监控页面
 const goToMonitor = (ruleId: string) => {
@@ -336,14 +305,9 @@ const handleImportFile = async (event: Event) => {
 
 onMounted(() => {
   fetchRules()
-  // 每秒计算网速
-  speedTimer = window.setInterval(calculateSpeed, 1000)
 })
 
 onUnmounted(() => {
-  if (speedTimer) {
-    clearInterval(speedTimer)
-  }
   // 取消订阅
   rules.value.forEach(rule => {
     if (rule.running) {
@@ -454,15 +418,15 @@ onUnmounted(() => {
               <span class="status-divider">|</span>
               <span class="status-stats">
                 <el-icon><User /></el-icon>
-                {{ getSpeed(rule.id).connections }}
+                {{ trafficByRule[rule.id]?.connections || 0 }}
               </span>
               <span class="status-stats speed-in">
                 <el-icon><Download /></el-icon>
-                {{ formatSpeed(getSpeed(rule.id).bytesInSpeed) }}
+                {{ formatSpeed(trafficByRule[rule.id]?.bytesInSpeed || 0) }}
               </span>
               <span class="status-stats speed-out">
                 <el-icon><Upload /></el-icon>
-                {{ formatSpeed(getSpeed(rule.id).bytesOutSpeed) }}
+                {{ formatSpeed(trafficByRule[rule.id]?.bytesOutSpeed || 0) }}
               </span>
               <el-icon class="monitor-link"><Right /></el-icon>
             </template>

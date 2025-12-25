@@ -14,6 +14,8 @@ export interface Connection {
   protocol: string
   bytes_in: number
   bytes_out: number
+  bytes_in_speed?: number  // 前端计算的入站速度
+  bytes_out_speed?: number // 前端计算的出站速度
   started_at: string
   ended_at?: string
   duration: number
@@ -24,6 +26,8 @@ export interface TrafficData {
   relay_id: string
   bytes_in: number
   bytes_out: number
+  bytes_in_speed: number
+  bytes_out_speed: number
   connections: number
 }
 
@@ -32,10 +36,27 @@ type MessageCallback = (msg: WSMessage) => void
 // 全局单例
 let ws: WebSocket | null = null
 const connected = ref(false)
+const dataActive = ref(false) // 数据活动状态（有数据流动时为 true）
+let dataActiveTimer: number | null = null
 const connections = ref<Map<string, Connection[]>>(new Map())
 const traffic = ref<Map<string, TrafficData>>(new Map())
 const subscribedRelayIds = new Set<string>()
 const messageCallbacks = new Set<MessageCallback>()
+
+// 用于计算连接速度的上一次数据
+const lastConnectionBytes = new Map<string, { bytes_in: number; bytes_out: number }>()
+
+// 触发数据活动指示
+const triggerDataActive = () => {
+  dataActive.value = true
+  if (dataActiveTimer) {
+    clearTimeout(dataActiveTimer)
+  }
+  // 200ms 后重置，形成闪烁效果
+  dataActiveTimer = window.setTimeout(() => {
+    dataActive.value = false
+  }, 200)
+}
 
 const connect = () => {
   if (ws && ws.readyState === WebSocket.OPEN) return
@@ -95,6 +116,8 @@ const connect = () => {
     try {
       const msg: WSMessage = JSON.parse(event.data)
       handleMessage(msg)
+      // 触发数据活动指示
+      triggerDataActive()
       // 通知所有回调
       messageCallbacks.forEach(cb => cb(msg))
     } catch (e) {
@@ -107,12 +130,40 @@ const handleMessage = (msg: WSMessage) => {
   switch (msg.type) {
     case 'relay.connections': {
       const data = msg.data as { relay_id: string; connections: Connection[] }
-      connections.value.set(data.relay_id, data.connections || [])
+      const conns = data.connections || []
+
+      // 计算每个连接的速度
+      conns.forEach(conn => {
+        const key = conn.id
+        const last = lastConnectionBytes.get(key)
+        if (last && conn.active) {
+          // 计算速度（每秒推送一次，所以差值就是速度）
+          conn.bytes_in_speed = Math.max(0, conn.bytes_in - last.bytes_in)
+          conn.bytes_out_speed = Math.max(0, conn.bytes_out - last.bytes_out)
+        } else {
+          conn.bytes_in_speed = 0
+          conn.bytes_out_speed = 0
+        }
+        // 更新记录
+        if (conn.active) {
+          lastConnectionBytes.set(key, { bytes_in: conn.bytes_in, bytes_out: conn.bytes_out })
+        } else {
+          lastConnectionBytes.delete(key)
+        }
+      })
+
+      // 创建新 Map 以确保 Vue 检测到变化
+      const newMap = new Map(connections.value)
+      newMap.set(data.relay_id, conns)
+      connections.value = newMap
       break
     }
     case 'relay.traffic': {
       const data = msg.data as TrafficData
-      traffic.value.set(data.relay_id, data)
+      // 创建新 Map 以确保 Vue 检测到变化
+      const newMap = new Map(traffic.value)
+      newMap.set(data.relay_id, data)
+      traffic.value = newMap
       break
     }
   }
@@ -158,6 +209,7 @@ export function useWebSocket() {
   return {
     connected,
     isConnected: connected,
+    dataActive,
     connections,
     traffic,
     subscribe: subscribeRelay,

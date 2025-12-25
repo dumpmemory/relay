@@ -24,13 +24,13 @@ import (
 
 // 登录失败记录
 type loginAttempt struct {
-	count     int
-	lastTry   time.Time
+	count       int
+	lastTry     time.Time
 	lockedUntil time.Time
 }
 
 var (
-	loginAttempts sync.Map // IP -> *loginAttempt
+	loginAttempts    sync.Map // IP -> *loginAttempt
 	maxLoginAttempts = 5
 	lockDuration     = 15 * time.Minute
 )
