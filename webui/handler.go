@@ -8,7 +8,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -665,15 +664,9 @@ func createUpgrader(r *http.Request) websocket.Upgrader {
 				return true
 			}
 
-			// 空字符串表示同源策略，检查 Origin 是否与 Host 匹配
+			// 空字符串表示未配置 CORS，默认允许（同源部署场景）
 			if allowOrigin == "" {
-				// 解析 Origin URL
-				originURL, err := url.Parse(origin)
-				if err != nil {
-					return false
-				}
-				// 比较 host（忽略协议）
-				return originURL.Host == req.Host
+				return true
 			}
 
 			// 检查是否在允许列表中
