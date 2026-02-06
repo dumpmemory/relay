@@ -78,7 +78,7 @@ export async function api<T = unknown>(action: string, data: Record<string, unkn
 // Setup API
 export const setupApi = {
   status: () => api<{ need_setup: boolean }>('setup.status'),
-  init: (password: string) => api('setup.init', { password })
+  init: (password: string) => api<{ recovery_key: string }>('setup.init', { password })
 }
 
 // 版本信息类型
@@ -98,7 +98,11 @@ export const systemApi = {
     api('system.change_password', { old_password: oldPassword, new_password: newPassword }),
   geoipStatus: () => api<{ enabled: boolean; path: string }>('system.geoip_status'),
   deleteGeoip: () => api('system.delete_geoip'),
-  version: () => api<VersionInfo>('system.version')
+  version: () => api<VersionInfo>('system.version'),
+  resetPassword: (recoveryKey: string, newPassword: string) =>
+    api<{ recovery_key: string }>('system.reset_password', { recovery_key: recoveryKey, new_password: newPassword }),
+  regenerateRecoveryKey: (password: string) =>
+    api<{ recovery_key: string }>('system.regenerate_recovery_key', { password })
 }
 
 // Relay 类型

@@ -15,6 +15,12 @@ const passwordForm = ref({
   confirmPassword: ''
 })
 
+// 恢复密钥相关
+const recoveryKeyPassword = ref('')
+const regenerating = ref(false)
+const showRecoveryKeyDialog = ref(false)
+const newRecoveryKey = ref('')
+
 const fetchSettings = async () => {
   loading.value = true
   try {
@@ -106,6 +112,36 @@ const changePassword = async () => {
     passwordForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' }
   } else {
     ElMessage.error(res.msg)
+  }
+}
+
+const regenerateRecoveryKey = async () => {
+  if (!recoveryKeyPassword.value) {
+    ElMessage.error('请输入当前密码')
+    return
+  }
+
+  regenerating.value = true
+  try {
+    const res = await systemApi.regenerateRecoveryKey(recoveryKeyPassword.value)
+    if (res.code === 0) {
+      newRecoveryKey.value = res.data.recovery_key
+      showRecoveryKeyDialog.value = true
+      recoveryKeyPassword.value = ''
+    } else {
+      ElMessage.error(res.msg)
+    }
+  } finally {
+    regenerating.value = false
+  }
+}
+
+const copyRecoveryKey = async () => {
+  try {
+    await navigator.clipboard.writeText(newRecoveryKey.value)
+    ElMessage.success('已复制到剪贴板')
+  } catch {
+    ElMessage.error('复制失败，请手动复制')
   }
 }
 
@@ -271,7 +307,77 @@ onMounted(() => {
           </div>
         </div>
       </div>
+
+      <!-- 恢复密钥管理 -->
+      <div class="setting-card">
+        <div class="card-header">
+          <div class="card-icon recovery-icon">
+            <el-icon><Key /></el-icon>
+          </div>
+          <div class="card-title">
+            <h4>恢复密钥</h4>
+            <p>密码重置</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <div class="form-tip" style="margin-bottom: 12px; margin-top: 0;">
+              <el-icon><InfoFilled /></el-icon>
+              <span>恢复密钥可在忘记密码时重置密码，重新生成后旧密钥将失效</span>
+            </div>
+            <label class="form-label">当前密码</label>
+            <el-input
+              v-model="recoveryKeyPassword"
+              type="password"
+              placeholder="请输入当前密码以验证身份"
+              show-password
+              class="dark-input"
+            >
+              <template #prefix>
+                <el-icon><Lock /></el-icon>
+              </template>
+            </el-input>
+          </div>
+          <div class="form-actions">
+            <el-button type="warning" :loading="regenerating" @click="regenerateRecoveryKey">
+              <el-icon><RefreshRight /></el-icon>
+              重新生成恢复密钥
+            </el-button>
+          </div>
+        </div>
+      </div>
     </div>
+
+    <!-- 恢复密钥展示弹窗 -->
+    <el-dialog
+      v-model="showRecoveryKeyDialog"
+      title="新的恢复密钥"
+      width="480px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      class="recovery-dialog"
+    >
+      <div class="dialog-warning">
+        <svg class="dialog-warning-icon" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+        </svg>
+        <span>请妥善保存，此密钥仅显示一次！旧密钥已失效。</span>
+      </div>
+      <div class="dialog-key-display">
+        <code>{{ newRecoveryKey }}</code>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="copyRecoveryKey">
+            <el-icon><DocumentCopy /></el-icon>
+            复制密钥
+          </el-button>
+          <el-button type="primary" @click="showRecoveryKeyDialog = false">
+            我已保存
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -492,6 +598,93 @@ onMounted(() => {
 
 .form-actions .el-button.el-button--primary:hover {
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+/* 恢复密钥图标 */
+.recovery-icon {
+  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+}
+
+.form-actions .el-button.el-button--warning {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border: none;
+  color: #fff;
+}
+
+.form-actions .el-button.el-button--warning:hover {
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+}
+
+/* 恢复密钥弹窗 */
+:deep(.recovery-dialog .el-dialog) {
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+}
+
+:deep(.recovery-dialog .el-dialog__header) {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+:deep(.recovery-dialog .el-dialog__title) {
+  color: #fff;
+  font-weight: 600;
+}
+
+:deep(.recovery-dialog .el-dialog__headerbtn .el-dialog__close) {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+:deep(.recovery-dialog .el-dialog__body) {
+  padding: 24px;
+}
+
+:deep(.recovery-dialog .el-dialog__footer) {
+  padding: 16px 24px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dialog-warning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 10px;
+  margin-bottom: 20px;
+  font-size: 13px;
+  color: #fbbf24;
+}
+
+.dialog-warning-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.dialog-key-display {
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  text-align: center;
+  word-break: break-all;
+}
+
+.dialog-key-display code {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 15px;
+  color: #10b981;
+  letter-spacing: 1px;
+  line-height: 1.8;
+}
+
+.dialog-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
 }
 
 /* 响应式 */

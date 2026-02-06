@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
@@ -78,10 +79,11 @@ func (h *Handlers) Handle(action string, data map[string]interface{}, c *gin.Con
 
 	// 无需认证的接口
 	noAuthRequired := map[string]bool{
-		"setup.status":   true,
-		"setup.init":     true,
-		"system.login":   true,
-		"system.version": true,
+		"setup.status":         true,
+		"setup.init":           true,
+		"system.login":         true,
+		"system.version":       true,
+		"system.reset_password": true,
 	}
 
 	// 检查是否需要认证
@@ -138,6 +140,18 @@ func (h *Handlers) handleSetup(method string, data map[string]interface{}) APIRe
 			return Error(500, "保存密码失败")
 		}
 
+		// 生成恢复密钥
+		recoveryKey := generateRecoveryKey()
+		// hash 使用不带连字符的原始值，与验证时一致
+		cleanRK := strings.ReplaceAll(recoveryKey, "-", "")
+		rkHash, err := bcrypt.GenerateFromPassword([]byte(cleanRK), bcrypt.DefaultCost)
+		if err != nil {
+			return Error(500, "生成恢复密钥失败")
+		}
+		if err := model.SetSetting("recovery_key_hash", string(rkHash)); err != nil {
+			return Error(500, "保存恢复密钥失败")
+		}
+
 		// 设置默认配置
 		model.SetSetting("geoip_enabled", "false")
 		model.SetSetting("auto_start", "true")
@@ -146,7 +160,9 @@ func (h *Handlers) handleSetup(method string, data map[string]interface{}) APIRe
 			return Error(500, "初始化失败")
 		}
 
-		return Success(nil)
+		return Success(map[string]interface{}{
+			"recovery_key": recoveryKey,
+		})
 
 	default:
 		return Error(400, "未知方法")
@@ -228,6 +244,7 @@ func (h *Handlers) handleSystem(method string, data map[string]interface{}, c *g
 		}
 		// 移除敏感信息
 		delete(settings, "admin_password")
+		delete(settings, "recovery_key_hash")
 		return Success(settings)
 
 	case "update_settings":
@@ -237,7 +254,7 @@ func (h *Handlers) handleSystem(method string, data map[string]interface{}, c *g
 			return Error(400, "key 不能为空")
 		}
 		// 禁止修改敏感设置
-		if key == "admin_password" || key == "setup_completed" {
+		if key == "admin_password" || key == "setup_completed" || key == "recovery_key_hash" {
 			return Error(403, "禁止修改此设置")
 		}
 		if err := model.SetSetting(key, value); err != nil {
@@ -290,6 +307,114 @@ func (h *Handlers) handleSystem(method string, data map[string]interface{}, c *g
 		model.DeleteAllSessions()
 
 		return Success(nil)
+
+	case "reset_password":
+		clientIP := c.ClientIP()
+
+		// 复用登录速率限制
+		if v, ok := loginAttempts.Load(clientIP); ok {
+			attempt := v.(*loginAttempt)
+			if time.Now().Before(attempt.lockedUntil) {
+				remaining := int(time.Until(attempt.lockedUntil).Minutes()) + 1
+				return Error(429, fmt.Sprintf("尝试次数过多，请 %d 分钟后再试", remaining))
+			}
+			if attempt.count >= maxLoginAttempts {
+				attempt.count = 0
+			}
+		}
+
+		recoveryKey, _ := data["recovery_key"].(string)
+		newPass, _ := data["new_password"].(string)
+
+		if recoveryKey == "" || newPass == "" {
+			return Error(400, "参数不完整")
+		}
+		if len(newPass) < 6 {
+			return Error(400, "新密码长度至少 6 位")
+		}
+
+		// 容错：去除连字符和空格
+		cleanKey := strings.ReplaceAll(strings.ReplaceAll(recoveryKey, "-", ""), " ", "")
+
+		storedHash, err := model.GetSetting("recovery_key_hash")
+		if err != nil || storedHash == "" {
+			return Error(500, "恢复密钥未设置")
+		}
+
+		if err := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(cleanKey)); err != nil {
+			// 记录失败尝试
+			v, _ := loginAttempts.LoadOrStore(clientIP, &loginAttempt{})
+			attempt := v.(*loginAttempt)
+			attempt.count++
+			attempt.lastTry = time.Now()
+
+			if attempt.count >= maxLoginAttempts {
+				attempt.lockedUntil = time.Now().Add(lockDuration)
+				return Error(429, fmt.Sprintf("尝试次数过多，已锁定 %d 分钟", int(lockDuration.Minutes())))
+			}
+
+			remaining := maxLoginAttempts - attempt.count
+			return Error(401, fmt.Sprintf("恢复密钥错误，还剩 %d 次尝试机会", remaining))
+		}
+
+		// 验证通过，清除失败记录
+		loginAttempts.Delete(clientIP)
+
+		// 更新密码
+		hash, err := bcrypt.GenerateFromPassword([]byte(newPass), bcrypt.DefaultCost)
+		if err != nil {
+			return Error(500, "密码加密失败")
+		}
+		if err := model.SetSetting("admin_password", string(hash)); err != nil {
+			return Error(500, "保存密码失败")
+		}
+
+		// 清除所有会话
+		model.DeleteAllSessions()
+
+		// 生成新恢复密钥
+		newRecoveryKey := generateRecoveryKey()
+		cleanNewRK := strings.ReplaceAll(newRecoveryKey, "-", "")
+		rkHash, err := bcrypt.GenerateFromPassword([]byte(cleanNewRK), bcrypt.DefaultCost)
+		if err != nil {
+			return Error(500, "生成恢复密钥失败")
+		}
+		if err := model.SetSetting("recovery_key_hash", string(rkHash)); err != nil {
+			return Error(500, "保存恢复密钥失败")
+		}
+
+		return Success(map[string]interface{}{
+			"recovery_key": newRecoveryKey,
+		})
+
+	case "regenerate_recovery_key":
+		password, _ := data["password"].(string)
+		if password == "" {
+			return Error(400, "请输入当前密码")
+		}
+
+		storedHash, err := model.GetSetting("admin_password")
+		if err != nil {
+			return Error(500, "获取密码失败")
+		}
+
+		if err := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password)); err != nil {
+			return Error(401, "密码错误")
+		}
+
+		newRecoveryKey := generateRecoveryKey()
+		cleanNewRK := strings.ReplaceAll(newRecoveryKey, "-", "")
+		rkHash, err := bcrypt.GenerateFromPassword([]byte(cleanNewRK), bcrypt.DefaultCost)
+		if err != nil {
+			return Error(500, "生成恢复密钥失败")
+		}
+		if err := model.SetSetting("recovery_key_hash", string(rkHash)); err != nil {
+			return Error(500, "保存恢复密钥失败")
+		}
+
+		return Success(map[string]interface{}{
+			"recovery_key": newRecoveryKey,
+		})
 
 	case "geoip_status":
 		return Success(map[string]interface{}{
@@ -716,6 +841,25 @@ func (h *Handlers) HandleWebSocket(c *gin.Context) {
 }
 
 // ==================== 工具函数 ====================
+
+// generateRecoveryKey 生成恢复密钥（20字节随机数，hex大写，每5字符用-分隔）
+func generateRecoveryKey() string {
+	b := make([]byte, 20)
+	if _, err := io.ReadFull(rand.Reader, b); err != nil {
+		panic("failed to generate recovery key: " + err.Error())
+	}
+	raw := strings.ToUpper(hex.EncodeToString(b))
+	// 每5字符用-分隔
+	var parts []string
+	for i := 0; i < len(raw); i += 5 {
+		end := i + 5
+		if end > len(raw) {
+			end = len(raw)
+		}
+		parts = append(parts, raw[i:end])
+	}
+	return strings.Join(parts, "-")
+}
 
 func generateToken() (string, error) {
 	b := make([]byte, 32)
