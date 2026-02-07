@@ -12,34 +12,6 @@ const form = ref({
   confirmPassword: ''
 })
 
-// 恢复密钥相关
-const recoveryKey = ref('')
-const showRecoveryKey = ref(false)
-const savedPassword = ref('')
-
-const copyKey = async () => {
-  try {
-    await navigator.clipboard.writeText(recoveryKey.value)
-    ElMessage.success('已复制到剪贴板')
-  } catch {
-    ElMessage.error('复制失败，请手动复制')
-  }
-}
-
-const continueToLogin = async () => {
-  // 自动登录
-  loading.value = true
-  try {
-    const loginRes = await systemApi.login(savedPassword.value)
-    if (loginRes.code === 0) {
-      setToken(loginRes.data.token)
-    }
-    router.push('/')
-  } finally {
-    loading.value = false
-  }
-}
-
 const submit = async () => {
   if (!form.value.password) {
     ElMessage.error('请输入密码')
@@ -58,10 +30,13 @@ const submit = async () => {
   try {
     const res = await setupApi.init(form.value.password)
     if (res.code === 0) {
-      savedPassword.value = form.value.password
-      recoveryKey.value = res.data.recovery_key
-      showRecoveryKey.value = true
       ElMessage.success('初始化完成')
+      // 自动登录
+      const loginRes = await systemApi.login(form.value.password)
+      if (loginRes.code === 0) {
+        setToken(loginRes.data.token)
+      }
+      router.push('/')
     } else {
       ElMessage.error(res.msg)
     }
@@ -89,109 +64,64 @@ onMounted(() => {
 
     <!-- 初始化卡片 -->
     <div class="setup-card" :class="{ 'card-visible': cardVisible }">
-      <!-- 恢复密钥展示 -->
-      <template v-if="showRecoveryKey">
-        <div class="logo-section">
-          <div class="logo-icon success-icon">
-            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M20 25L23 28L30 20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2"/>
-            </svg>
-          </div>
-          <h1 class="title">保存恢复密钥</h1>
-          <p class="subtitle">请妥善保存以下恢复密钥，忘记密码时可用于重置</p>
+      <!-- Logo 区域 -->
+      <div class="logo-section">
+        <div class="logo-icon">
+          <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M24 4L4 14V34L24 44L44 34V14L24 4Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M4 14L24 24L44 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M24 24V44" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="24" cy="24" r="6" stroke="currentColor" stroke-width="2"/>
+          </svg>
         </div>
+        <h1 class="title">系统初始化</h1>
+        <p class="subtitle">首次使用，请设置管理员密码</p>
+      </div>
 
-        <div class="recovery-section">
-          <div class="warning-box">
-            <svg class="warning-icon" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-            </svg>
-            <span>此密钥仅显示一次，关闭后无法再次查看！</span>
-          </div>
+      <!-- 表单区域 -->
+      <div class="form-section">
+        <el-form :model="form" label-position="top">
+          <el-form-item label="管理员密码">
+            <el-input
+              v-model="form.password"
+              type="password"
+              placeholder="请输入密码 (至少 6 位)"
+              size="large"
+              show-password
+            >
+              <template #prefix>
+                <el-icon><Lock /></el-icon>
+              </template>
+            </el-input>
+          </el-form-item>
 
-          <div class="key-display">
-            <code>{{ recoveryKey }}</code>
-          </div>
-
-          <el-button type="primary" class="copy-btn" @click="copyKey">
-            <el-icon><DocumentCopy /></el-icon>
-            复制密钥
-          </el-button>
+          <el-form-item label="确认密码">
+            <el-input
+              v-model="form.confirmPassword"
+              type="password"
+              placeholder="请再次输入密码"
+              size="large"
+              show-password
+              @keyup.enter="submit"
+            >
+              <template #prefix>
+                <el-icon><Lock /></el-icon>
+              </template>
+            </el-input>
+          </el-form-item>
 
           <el-button
             type="primary"
             size="large"
             :loading="loading"
-            @click="continueToLogin"
+            @click="submit"
             class="submit-btn"
           >
-            我已保存，继续
+            <span v-if="!loading">完成设置</span>
+            <span v-else>设置中...</span>
           </el-button>
-        </div>
-      </template>
-
-      <!-- 设置密码表单 -->
-      <template v-else>
-        <!-- Logo 区域 -->
-        <div class="logo-section">
-          <div class="logo-icon">
-            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M24 4L4 14V34L24 44L44 34V14L24 4Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M4 14L24 24L44 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M24 24V44" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle cx="24" cy="24" r="6" stroke="currentColor" stroke-width="2"/>
-            </svg>
-          </div>
-          <h1 class="title">系统初始化</h1>
-          <p class="subtitle">首次使用，请设置管理员密码</p>
-        </div>
-
-        <!-- 表单区域 -->
-        <div class="form-section">
-          <el-form :model="form" label-position="top">
-            <el-form-item label="管理员密码">
-              <el-input
-                v-model="form.password"
-                type="password"
-                placeholder="请输入密码 (至少 6 位)"
-                size="large"
-                show-password
-              >
-                <template #prefix>
-                  <el-icon><Lock /></el-icon>
-                </template>
-              </el-input>
-            </el-form-item>
-
-            <el-form-item label="确认密码">
-              <el-input
-                v-model="form.confirmPassword"
-                type="password"
-                placeholder="请再次输入密码"
-                size="large"
-                show-password
-                @keyup.enter="submit"
-              >
-                <template #prefix>
-                  <el-icon><Lock /></el-icon>
-                </template>
-              </el-input>
-            </el-form-item>
-
-            <el-button
-              type="primary"
-              size="large"
-              :loading="loading"
-              @click="submit"
-              class="submit-btn"
-            >
-              <span v-if="!loading">完成设置</span>
-              <span v-else>设置中...</span>
-            </el-button>
-          </el-form>
-        </div>
-      </template>
+        </el-form>
+      </div>
 
       <!-- 底部信息 -->
       <div class="footer-info">
@@ -326,11 +256,6 @@ onMounted(() => {
   box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
 }
 
-.logo-icon.success-icon {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  box-shadow: 0 8px 24px rgba(245, 158, 11, 0.3);
-}
-
 .logo-icon svg {
   width: 36px;
   height: 36px;
@@ -351,61 +276,6 @@ onMounted(() => {
   margin: 0;
   font-size: 14px;
   color: rgba(255, 255, 255, 0.6);
-}
-
-/* 恢复密钥区域 */
-.recovery-section {
-  margin-bottom: 32px;
-}
-
-.warning-box {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  background: rgba(245, 158, 11, 0.15);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  border-radius: 10px;
-  margin-bottom: 20px;
-  font-size: 13px;
-  color: #fbbf24;
-}
-
-.warning-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-}
-
-.key-display {
-  padding: 16px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  margin-bottom: 16px;
-  text-align: center;
-  word-break: break-all;
-}
-
-.key-display code {
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-  font-size: 15px;
-  color: #10b981;
-  letter-spacing: 1px;
-  line-height: 1.8;
-}
-
-.copy-btn {
-  width: 100%;
-  height: 40px;
-  margin-bottom: 12px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #fff;
-}
-
-.copy-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
 }
 
 /* 表单区域 */

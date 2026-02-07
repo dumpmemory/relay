@@ -9,18 +9,14 @@ const loading = ref(false)
 const password = ref('')
 const cardVisible = ref(false)
 
-// 视图模式: login | reset | reset_success
-const viewMode = ref<'login' | 'reset' | 'reset_success'>('login')
+// 视图模式: login | reset
+const viewMode = ref<'login' | 'reset'>('login')
 
 // 重置密码表单
 const resetForm = ref({
-  recoveryKey: '',
   newPassword: '',
   confirmPassword: ''
 })
-
-// 新生成的恢复密钥
-const newRecoveryKey = ref('')
 
 const login = async () => {
   if (!password.value) {
@@ -45,11 +41,24 @@ const login = async () => {
   }
 }
 
-const resetPassword = async () => {
-  if (!resetForm.value.recoveryKey) {
-    ElMessage.error('请输入恢复密钥')
-    return
+// 检查重置文件是否存在
+const checkResetStatus = async () => {
+  loading.value = true
+  try {
+    const res = await systemApi.resetStatus()
+    if (res.code === 0 && res.data.can_reset) {
+      viewMode.value = 'reset'
+    } else {
+      ElMessage.warning('未检测到重置文件，请在数据目录创建 reset_password 文件')
+    }
+  } catch {
+    ElMessage.error('网络请求失败')
+  } finally {
+    loading.value = false
   }
+}
+
+const resetPassword = async () => {
   if (!resetForm.value.newPassword) {
     ElMessage.error('请输入新密码')
     return
@@ -65,14 +74,11 @@ const resetPassword = async () => {
 
   loading.value = true
   try {
-    const res = await systemApi.resetPassword(
-      resetForm.value.recoveryKey,
-      resetForm.value.newPassword
-    )
+    const res = await systemApi.resetPassword(resetForm.value.newPassword)
     if (res.code === 0) {
-      newRecoveryKey.value = res.data.recovery_key
-      viewMode.value = 'reset_success'
-      ElMessage.success('密码重置成功')
+      ElMessage.success('密码重置成功，请使用新密码登录')
+      viewMode.value = 'login'
+      resetForm.value = { newPassword: '', confirmPassword: '' }
     } else {
       ElMessage.error(res.msg)
     }
@@ -83,20 +89,10 @@ const resetPassword = async () => {
   }
 }
 
-const copyKey = async () => {
-  try {
-    await navigator.clipboard.writeText(newRecoveryKey.value)
-    ElMessage.success('已复制到剪贴板')
-  } catch {
-    ElMessage.error('复制失败，请手动复制')
-  }
-}
-
 const backToLogin = () => {
   viewMode.value = 'login'
   password.value = ''
-  resetForm.value = { recoveryKey: '', newPassword: '', confirmPassword: '' }
-  newRecoveryKey.value = ''
+  resetForm.value = { newPassword: '', confirmPassword: '' }
 }
 
 onMounted(() => {
@@ -166,7 +162,7 @@ onMounted(() => {
         </div>
 
         <div class="forgot-link">
-          <a @click="viewMode = 'reset'">忘记密码？</a>
+          <a @click="checkResetStatus">忘记密码？</a>
         </div>
       </template>
 
@@ -180,24 +176,11 @@ onMounted(() => {
             </svg>
           </div>
           <h1 class="title">重置密码</h1>
-          <p class="subtitle">输入恢复密钥以重置管理员密码</p>
+          <p class="subtitle">已检测到重置文件，请设置新密码</p>
         </div>
 
         <div class="form-section">
           <el-form label-position="top">
-            <el-form-item label="恢复密钥">
-              <el-input
-                v-model="resetForm.recoveryKey"
-                placeholder="请输入恢复密钥"
-                size="large"
-                class="mono-input"
-              >
-                <template #prefix>
-                  <el-icon><Key /></el-icon>
-                </template>
-              </el-input>
-            </el-form-item>
-
             <el-form-item label="新密码">
               <el-input
                 v-model="resetForm.newPassword"
@@ -243,47 +226,6 @@ onMounted(() => {
 
         <div class="forgot-link">
           <a @click="backToLogin">返回登录</a>
-        </div>
-      </template>
-
-      <!-- ========= 重置成功视图 ========= -->
-      <template v-else-if="viewMode === 'reset_success'">
-        <div class="logo-section">
-          <div class="logo-icon success-icon">
-            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M20 25L23 28L30 20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2"/>
-            </svg>
-          </div>
-          <h1 class="title">密码已重置</h1>
-          <p class="subtitle">请保存新的恢复密钥，旧密钥已失效</p>
-        </div>
-
-        <div class="recovery-section">
-          <div class="warning-box">
-            <svg class="warning-icon" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-            </svg>
-            <span>此密钥仅显示一次，关闭后无法再次查看！</span>
-          </div>
-
-          <div class="key-display">
-            <code>{{ newRecoveryKey }}</code>
-          </div>
-
-          <el-button type="primary" class="copy-btn" @click="copyKey">
-            <el-icon><DocumentCopy /></el-icon>
-            复制密钥
-          </el-button>
-
-          <el-button
-            type="primary"
-            size="large"
-            @click="backToLogin"
-            class="login-btn"
-          >
-            返回登录
-          </el-button>
         </div>
       </template>
 
@@ -425,11 +367,6 @@ onMounted(() => {
   box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
 }
 
-.logo-icon.success-icon {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  box-shadow: 0 8px 24px rgba(245, 158, 11, 0.3);
-}
-
 .logo-icon svg {
   width: 36px;
   height: 36px;
@@ -497,12 +434,6 @@ onMounted(() => {
   color: rgba(255, 255, 255, 0.5);
 }
 
-/* 恢复密钥输入框等宽字体 */
-.mono-input :deep(.el-input__inner) {
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-  letter-spacing: 0.5px;
-}
-
 /* 登录按钮 */
 .login-btn {
   width: 100%;
@@ -540,61 +471,6 @@ onMounted(() => {
 
 .forgot-link a:hover {
   color: #10b981;
-}
-
-/* 恢复密钥展示区域 */
-.recovery-section {
-  margin-bottom: 16px;
-}
-
-.warning-box {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  background: rgba(245, 158, 11, 0.15);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  border-radius: 10px;
-  margin-bottom: 20px;
-  font-size: 13px;
-  color: #fbbf24;
-}
-
-.warning-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-}
-
-.key-display {
-  padding: 16px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  margin-bottom: 16px;
-  text-align: center;
-  word-break: break-all;
-}
-
-.key-display code {
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-  font-size: 15px;
-  color: #10b981;
-  letter-spacing: 1px;
-  line-height: 1.8;
-}
-
-.copy-btn {
-  width: 100%;
-  height: 40px;
-  margin-bottom: 12px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #fff;
-}
-
-.copy-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
 }
 
 /* 底部信息 */
