@@ -29,7 +29,7 @@ const login = async () => {
     const res = await systemApi.login(password.value)
     if (res.code === 0) {
       setToken(res.data.token)
-      router.replace('/')
+      await router.replace('/')
     } else {
       ElMessage.error(res.msg)
       loading.value = false
@@ -131,7 +131,7 @@ onMounted(() => {
         </div>
 
         <div class="form-section">
-          <el-form label-position="top">
+          <el-form @submit.prevent label-position="top">
             <el-form-item label="管理员密码">
               <el-input
                 v-model="password"
@@ -180,7 +180,7 @@ onMounted(() => {
         </div>
 
         <div class="form-section">
-          <el-form label-position="top">
+          <el-form @submit.prevent label-position="top">
             <el-form-item label="新密码">
               <el-input
                 v-model="resetForm.newPassword"

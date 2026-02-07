@@ -36,7 +36,7 @@ const submit = async () => {
       if (loginRes.code === 0) {
         setToken(loginRes.data.token)
       }
-      router.push('/')
+      await router.push('/')
     } else {
       ElMessage.error(res.msg)
     }
@@ -80,7 +80,7 @@ onMounted(() => {
 
       <!-- 表单区域 -->
       <div class="form-section">
-        <el-form :model="form" label-position="top">
+        <el-form :model="form" @submit.prevent label-position="top">
           <el-form-item label="管理员密码">
             <el-input
               v-model="form.password"
