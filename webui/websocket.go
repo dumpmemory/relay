@@ -26,12 +26,12 @@ type WSHub struct {
 
 // WSClient WebSocket 客户端
 type WSClient struct {
-	hub     *WSHub
-	conn    *websocket.Conn
-	send    chan []byte
-	topics  map[string]bool
-	relayID string // 订阅特定 relay
-	mu      sync.RWMutex
+	hub      *WSHub
+	conn     *websocket.Conn
+	send     chan []byte
+	topics   map[string]bool
+	relayIDs map[string]bool // 订阅的 relay ID 集合，空表示匹配所有
+	mu       sync.RWMutex
 }
 
 // NewWSHub 创建 Hub
@@ -128,7 +128,7 @@ func (h *WSHub) BroadcastToRelay(relayID, msgType string, data interface{}) {
 	for client := range h.clients {
 		client.mu.RLock()
 		subscribed := client.topics[msgType]
-		matchRelay := client.relayID == "" || client.relayID == relayID
+		matchRelay := len(client.relayIDs) == 0 || client.relayIDs[relayID]
 		client.mu.RUnlock()
 
 		if subscribed && matchRelay {
@@ -141,10 +141,11 @@ func (h *WSHub) BroadcastToRelay(relayID, msgType string, data interface{}) {
 }
 
 // readPump 读取消息
-func (c *WSClient) readPump() {
+func (c *WSClient) readPump(wg *sync.WaitGroup) {
 	defer func() {
 		c.hub.unregister <- c
 		c.conn.Close()
+		wg.Done()
 	}()
 
 	c.conn.SetReadLimit(512)
@@ -183,10 +184,15 @@ func (c *WSClient) readPump() {
 			for _, topic := range req.Topics {
 				c.topics[topic] = true
 			}
-			c.relayID = req.RelayID
+			if req.RelayID != "" {
+				c.relayIDs[req.RelayID] = true
+			}
 			c.mu.Unlock()
 		} else if req.Action == "unsubscribe" {
 			c.mu.Lock()
+			if req.RelayID != "" {
+				delete(c.relayIDs, req.RelayID)
+			}
 			for _, topic := range req.Topics {
 				delete(c.topics, topic)
 			}
@@ -196,11 +202,12 @@ func (c *WSClient) readPump() {
 }
 
 // writePump 发送消息
-func (c *WSClient) writePump() {
+func (c *WSClient) writePump(wg *sync.WaitGroup) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
 		ticker.Stop()
 		c.conn.Close()
+		wg.Done()
 	}()
 
 	for {

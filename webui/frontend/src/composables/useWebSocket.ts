@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { getToken } from '../api'
+import { getToken, api } from '../api'
 
 export interface WSMessage {
   type: string
@@ -34,6 +34,7 @@ export interface TrafficData {
 type MessageCallback = (msg: WSMessage) => void
 
 // 全局单例
+let connectFailures = 0
 let ws: WebSocket | null = null
 const connected = ref(false)
 const dataActive = ref(false) // 数据活动状态（有数据流动时为 true）
@@ -86,6 +87,8 @@ const connect = () => {
 
   ws.onopen = () => {
     connected.value = true
+    connectFailures = 0
+    console.log('[WS] 连接成功:', wsUrl)
     // 订阅所有消息类型
     ws?.send(JSON.stringify({
       action: 'subscribe',
@@ -101,15 +104,31 @@ const connect = () => {
     })
   }
 
-  ws.onclose = () => {
+  ws.onclose = (event) => {
     connected.value = false
+    console.warn('[WS] 连接关闭:', { code: event.code, reason: event.reason, wasClean: event.wasClean, url: wsUrl })
     ws = null
-    // 3秒后重连
+    connectFailures++
+
+    // 连续失败 3 次，通过 API 验证认证状态
+    if (connectFailures >= 3) {
+      api('stats.overview').then((res) => {
+        if (res.code === 0) {
+          // 认证有效，可能是网络波动，继续重连
+          connectFailures = 0
+          setTimeout(connect, 5000)
+        }
+        // 认证失败时 api() 内部已触发全局跳转
+      })
+      return
+    }
+
     setTimeout(connect, 3000)
   }
 
-  ws.onerror = () => {
+  ws.onerror = (event) => {
     connected.value = false
+    console.error('[WS] 连接错误:', wsUrl, event)
   }
 
   ws.onmessage = (event) => {

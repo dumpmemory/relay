@@ -19,6 +19,7 @@ const resetForm = ref({
 })
 
 const login = async () => {
+  if (loading.value) return
   if (!password.value) {
     ElMessage.error('请输入密码')
     return
@@ -29,14 +30,18 @@ const login = async () => {
     const res = await systemApi.login(password.value)
     if (res.code === 0) {
       setToken(res.data.token)
-      await router.replace('/')
+      // 尝试 router 跳转，失败则用 location.href 兜底
+      const failure = await router.replace('/')
+      if (failure) {
+        window.location.replace('/')
+      }
     } else {
       ElMessage.error(res.msg)
-      loading.value = false
     }
   } catch (e) {
     console.error('登录失败:', e)
     ElMessage.error('网络请求失败')
+  } finally {
     loading.value = false
   }
 }
@@ -59,6 +64,7 @@ const checkResetStatus = async () => {
 }
 
 const resetPassword = async () => {
+  if (loading.value) return
   if (!resetForm.value.newPassword) {
     ElMessage.error('请输入新密码')
     return

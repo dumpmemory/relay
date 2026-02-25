@@ -1,3 +1,5 @@
+import { ElMessage } from 'element-plus'
+
 // API 响应类型
 interface ApiResponse<T = unknown> {
   code: number
@@ -18,6 +20,18 @@ export function setToken(token: string) {
 // 清除 token
 export function removeToken() {
   localStorage.removeItem('token')
+}
+
+// 认证过期全局处理（防重复触发）
+let isAuthRedirecting = false
+export function handleAuthExpired() {
+  if (isAuthRedirecting) return
+  isAuthRedirecting = true
+  removeToken()
+  ElMessage.warning('登录已过期，请重新登录')
+  setTimeout(() => {
+    window.location.href = '/login'
+  }, 1500)
 }
 
 // API 基础 URL
@@ -63,7 +77,14 @@ export async function api<T = unknown>(action: string, data: Record<string, unkn
       }
     }
 
-    return response.json()
+    const result: ApiResponse<T> = await response.json()
+
+    // 全局认证过期处理（排除登录接口自身的 401）
+    if (result.code === 401 && (result.msg === '未登录' || result.msg === '登录已过期')) {
+      handleAuthExpired()
+    }
+
+    return result
   } catch (error) {
     // 网络错误或其他异常
     const message = error instanceof Error ? error.message : '网络连接失败'

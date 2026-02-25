@@ -100,7 +100,8 @@ func corsMiddleware() gin.HandlerFunc {
 			// 支持多个来源，用逗号分隔
 			origins := strings.Split(allowOrigin, ",")
 			for _, o := range origins {
-				if strings.TrimSpace(o) == origin {
+				trimmed := strings.TrimSpace(o)
+				if trimmed == "*" || trimmed == origin {
 					allowed = true
 					break
 				}

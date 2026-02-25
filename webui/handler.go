@@ -714,7 +714,8 @@ func createUpgrader(r *http.Request) websocket.Upgrader {
 			// 检查是否在允许列表中
 			origins := strings.Split(allowOrigin, ",")
 			for _, o := range origins {
-				if strings.TrimSpace(o) == origin {
+				trimmed := strings.TrimSpace(o)
+				if trimmed == "*" || trimmed == origin {
 					return true
 				}
 			}
@@ -745,16 +746,19 @@ func (h *Handlers) HandleWebSocket(c *gin.Context) {
 	}
 
 	client := &WSClient{
-		hub:    h.wsHub,
-		conn:   conn,
-		send:   make(chan []byte, 256),
-		topics: make(map[string]bool),
+		hub:      h.wsHub,
+		conn:     conn,
+		send:     make(chan []byte, 256),
+		topics:   make(map[string]bool),
+		relayIDs: make(map[string]bool),
 	}
 
 	h.wsHub.register <- client
-
-	go client.writePump()
-	go client.readPump()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go client.writePump(&wg)
+	go client.readPump(&wg)
+	wg.Wait()
 }
 
 // ==================== 工具函数 ====================

@@ -12,10 +12,12 @@ const loading = ref(false)
 
 const { connections, traffic, subscribe, unsubscribe, isConnected } = useWebSocket()
 
+// 已订阅的规则 ID（用于 unmount 时清理）
+const subscribedIds = ref<string[]>([])
+
 const currentConnections = computed(() => {
   if (!selectedRelay.value) return []
   const conns = connections.value.get(selectedRelay.value) || []
-  // 排序：活跃连接优先，然后按开始时间倒序
   return [...conns].sort((a, b) => {
     if (a.active !== b.active) return a.active ? -1 : 1
     return new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
@@ -27,6 +29,22 @@ const defaultTraffic: TrafficData = { relay_id: '', bytes_in: 0, bytes_out: 0, b
 const currentTraffic = computed(() => {
   if (!selectedRelay.value) return defaultTraffic
   return traffic.value.get(selectedRelay.value) || defaultTraffic
+})
+
+// 汇总数据：聚合所有运行中规则的流量
+const totalTraffic = computed(() => {
+  let totalConn = 0, totalIn = 0, totalOut = 0, totalInSpeed = 0, totalOutSpeed = 0
+  for (const rule of rules.value) {
+    const t = traffic.value.get(rule.id)
+    if (t) {
+      totalConn += t.connections
+      totalIn += t.bytes_in
+      totalOut += t.bytes_out
+      totalInSpeed += t.bytes_in_speed
+      totalOutSpeed += t.bytes_out_speed
+    }
+  }
+  return { connections: totalConn, bytes_in: totalIn, bytes_out: totalOut, bytes_in_speed: totalInSpeed, bytes_out_speed: totalOutSpeed }
 })
 
 const selectedRule = computed(() => {
@@ -75,12 +93,20 @@ const fetchRules = async () => {
     if (res.code === 0) {
       rules.value = (res.data || []).filter((r) => r.running)
 
+      // 订阅所有运行中规则的数据
+      for (const rule of rules.value) {
+        if (!subscribedIds.value.includes(rule.id)) {
+          subscribe(rule.id)
+          subscribedIds.value.push(rule.id)
+        }
+      }
+
       // 优先从 URL 参数读取要选中的 relay
       const queryRelayId = route.query.relay as string
       if (queryRelayId && rules.value.find(r => r.id === queryRelayId)) {
-        selectRelay(queryRelayId)
+        selectedRelay.value = queryRelayId
       } else if (rules.value[0] && !selectedRelay.value) {
-        selectRelay(rules.value[0].id)
+        selectedRelay.value = rules.value[0].id
       }
     } else {
       ElMessage.error(res.msg)
@@ -91,13 +117,7 @@ const fetchRules = async () => {
 }
 
 const selectRelay = (id: string) => {
-  if (selectedRelay.value) {
-    unsubscribe(selectedRelay.value)
-  }
   selectedRelay.value = id
-  if (id) {
-    subscribe(id)
-  }
 }
 
 onMounted(() => {
@@ -105,9 +125,11 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (selectedRelay.value) {
-    unsubscribe(selectedRelay.value)
+  // 取消所有订阅
+  for (const id of subscribedIds.value) {
+    unsubscribe(id)
   }
+  subscribedIds.value = []
 })
 </script>
 
@@ -123,6 +145,66 @@ onUnmounted(() => {
         <div :class="['ws-status', { connected: isConnected }]">
           <span class="status-dot"></span>
           <span class="status-text">{{ isConnected ? '已连接' : '未连接' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 汇总仪表盘 -->
+    <div class="summary-dashboard" v-if="rules.length > 0">
+      <div class="summary-title">
+        <el-icon><DataAnalysis /></el-icon>
+        <span>全局汇总</span>
+        <span class="summary-count">{{ rules.length }} 条规则</span>
+      </div>
+      <div class="summary-stats">
+        <div class="summary-item">
+          <div class="summary-icon conn-icon">
+            <el-icon><Link /></el-icon>
+          </div>
+          <div class="summary-data">
+            <div class="summary-label">总连接</div>
+            <div class="summary-value">{{ totalTraffic.connections }}</div>
+          </div>
+        </div>
+        <div class="summary-divider"></div>
+        <div class="summary-item">
+          <div class="summary-icon speed-in-icon">
+            <el-icon><Download /></el-icon>
+          </div>
+          <div class="summary-data">
+            <div class="summary-label">入站速度</div>
+            <div class="summary-value">{{ formatSpeed(totalTraffic.bytes_in_speed) }}</div>
+          </div>
+        </div>
+        <div class="summary-divider"></div>
+        <div class="summary-item">
+          <div class="summary-icon speed-out-icon">
+            <el-icon><Upload /></el-icon>
+          </div>
+          <div class="summary-data">
+            <div class="summary-label">出站速度</div>
+            <div class="summary-value">{{ formatSpeed(totalTraffic.bytes_out_speed) }}</div>
+          </div>
+        </div>
+        <div class="summary-divider"></div>
+        <div class="summary-item">
+          <div class="summary-icon total-in-icon">
+            <el-icon><Download /></el-icon>
+          </div>
+          <div class="summary-data">
+            <div class="summary-label">入站总量</div>
+            <div class="summary-value">{{ formatBytes(totalTraffic.bytes_in) }}</div>
+          </div>
+        </div>
+        <div class="summary-divider"></div>
+        <div class="summary-item">
+          <div class="summary-icon total-out-icon">
+            <el-icon><Upload /></el-icon>
+          </div>
+          <div class="summary-data">
+            <div class="summary-label">出站总量</div>
+            <div class="summary-value">{{ formatBytes(totalTraffic.bytes_out) }}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -372,6 +454,115 @@ onUnmounted(() => {
 .ws-status.connected .status-text {
   color: #10b981;
   font-weight: 500;
+}
+
+/* 汇总仪表盘 */
+.summary-dashboard {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px 24px;
+  margin-bottom: 20px;
+}
+
+.summary-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 16px;
+}
+
+.summary-title .el-icon {
+  color: #10b981;
+  font-size: 16px;
+}
+
+.summary-count {
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 10px;
+  border-radius: 10px;
+  margin-left: auto;
+}
+
+.summary-stats {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.summary-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+}
+
+.summary-divider {
+  width: 1px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.summary-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.conn-icon {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: #fff;
+}
+
+.speed-in-icon {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+}
+
+.speed-out-icon {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  color: #fff;
+}
+
+.total-in-icon {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #fff;
+}
+
+.total-out-icon {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #fff;
+}
+
+.summary-data {
+  min-width: 0;
+}
+
+.summary-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 2px;
+}
+
+.summary-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
 }
 
 /* 主布局 */
@@ -861,6 +1052,20 @@ onUnmounted(() => {
   .stats-grid {
     grid-template-columns: repeat(3, 1fr);
   }
+
+  .summary-stats {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .summary-item {
+    flex: 0 0 calc(33% - 8px);
+    padding: 0 8px;
+  }
+
+  .summary-divider {
+    display: none;
+  }
 }
 
 @media (max-width: 767px) {
@@ -889,6 +1094,20 @@ onUnmounted(() => {
 
   .stat-value {
     font-size: 18px;
+  }
+
+  .summary-item {
+    flex: 0 0 calc(50% - 8px);
+  }
+
+  .summary-value {
+    font-size: 16px;
+  }
+
+  .summary-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
   }
 }
 </style>
